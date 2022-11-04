@@ -1,16 +1,41 @@
-# This is a sample Python script.
+import os
+import uuid
+from dotenv import load_dotenv
+from twilio.rest import Client
+from fastapi import FastAPI, Form
+from models import Product, session
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+load_dotenv()
+
+#Twilio settings
+account_sid = os.environ["TWILIO_ACCOUNT_SID"]
+auth_token = os.environ["TWILIO_AUTH_TOKEN"]
+client = Client(account_sid, auth_token)
+app = FastAPI()
+
+# test endpoint
+@app.get("/")
+async def index():
+    return {"message": "hello"}
 
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+def send_message(body_text):
+    client.messages.create(
+        from_='whatsapp:+14155238886', body=body_text, to="whatsapp:+263782875112"
+    )
 
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+@app.post("/message")
+async def reply(Body: str = Form()):
+    message = Body.lower()
+    products = session.query(Product)
+    for product in products:
+        if product.name.lower() in message:
+            if product.amount >= 1:
+                id = str(uuid())
+                message = f"Your order is placed for {product.name}. This is the tracking id: {id}"
+                ordered_product = products.filter(Product.name == product.name).first()
+                ordered_product.amount -=1
+                session.commit()
+                return send_message(message)
+    message = "The product you mentioned is not available at the moment."
+    return send_message(message)
